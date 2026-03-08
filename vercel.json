@@ -1,0 +1,7 @@
+{
+  "rewrites": [
+    { "source": "/api/sheets/:sheet*/row/:row*", "destination": "/api/sheets" },
+    { "source": "/api/sheets/:sheet*", "destination": "/api/sheets" },
+    { "source": "/api/sheets", "destination": "/api/sheets" }
+  ]
+}

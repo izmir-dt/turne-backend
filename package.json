@@ -1,0 +1,7 @@
+{
+  "name": "tiyatro-backend",
+  "version": "1.0.0",
+  "dependencies": {
+    "googleapis": "^148.0.0"
+  }
+}
