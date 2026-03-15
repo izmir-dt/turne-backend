@@ -109,8 +109,49 @@ module.exports = async function handler(req, res) {
     }
 
     // POST /api/sheets/:sheet/row — yeni satır ekle
+    // insertAfterRow varsa o satırdan sonra ekle, yoksa en alta ekle
     if (sheetName && action === "row" && !pathParts[2] && req.method === "POST") {
-      const { values } = req.body;
+      const { values, insertAfterRow } = req.body;
+
+      if (insertAfterRow && typeof insertAfterRow === "number") {
+        // Sheet ID bul
+        const meta = await sheets.spreadsheets.get({ spreadsheetId: SPREADSHEET_ID });
+        const sheet = meta.data.sheets?.find((s) => s.properties?.title === sheetName);
+        if (!sheet) return res.status(404).json({ error: "Sheet not found" });
+        const sheetId = sheet.properties?.sheetId;
+
+        // insertAfterRow satırından sonraya boş satır ekle (0-tabanlı)
+        await sheets.spreadsheets.batchUpdate({
+          spreadsheetId: SPREADSHEET_ID,
+          requestBody: {
+            requests: [{
+              insertDimension: {
+                range: {
+                  sheetId,
+                  dimension: "ROWS",
+                  startIndex: insertAfterRow,
+                  endIndex: insertAfterRow + 1,
+                },
+                inheritFromBefore: true,
+              },
+            }],
+          },
+        });
+
+        // Eklenen satıra veriyi yaz
+        const newRowNum = insertAfterRow + 1;
+        const colLetter = colToLetter(values.length);
+        await sheets.spreadsheets.values.update({
+          spreadsheetId: SPREADSHEET_ID,
+          range: `${sheetName}!A${newRowNum}:${colLetter}${newRowNum}`,
+          valueInputOption: "USER_ENTERED",
+          requestBody: { values: [values] },
+        });
+
+        return res.json({ success: true, rowNumber: newRowNum });
+      }
+
+      // insertAfterRow yoksa eski davranış
       await sheets.spreadsheets.values.append({
         spreadsheetId: SPREADSHEET_ID,
         range: sheetName,
