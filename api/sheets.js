@@ -152,13 +152,17 @@ module.exports = async function handler(req, res) {
       }
 
       // insertAfterRow yoksa eski davranış
-      await sheets.spreadsheets.values.append({
+      const appendRes = await sheets.spreadsheets.values.append({
         spreadsheetId: SPREADSHEET_ID,
         range: sheetName,
         valueInputOption: "USER_ENTERED",
         requestBody: { values: [values] },
       });
-      return res.json({ success: true });
+      // Eklenen satır numarasını döndür (örn: "FIRMA_REHBERI!A5:F5" → 5)
+      const updatedRange = appendRes.data?.updates?.updatedRange || "";
+      const rowMatch = updatedRange.match(/:.*?(\d+)$/);
+      const rowNumber = rowMatch ? parseInt(rowMatch[1]) : null;
+      return res.json({ success: true, rowNumber });
     }
 
     // DELETE /api/sheets/:sheet/row/:rowNum — satır sil
