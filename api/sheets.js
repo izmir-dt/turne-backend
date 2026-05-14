@@ -120,6 +120,17 @@ module.exports = async function handler(req, res) {
         const sheet = meta.data.sheets?.find((s) => s.properties?.title === sheetName);
         if (!sheet) return res.status(404).json({ error: "Sheet not found" });
         const sheetId = sheet.properties?.sheetId;
+        const currentRowCount = sheet.properties?.gridProperties?.rowCount ?? 0;
+
+        // Sheet doluysa önce kapasite ekle
+        if (currentRowCount <= insertAfterRow) {
+          await sheets.spreadsheets.batchUpdate({
+            spreadsheetId: SPREADSHEET_ID,
+            requestBody: {
+              requests: [{ appendDimension: { sheetId, dimension: "ROWS", length: 10 } }],
+            },
+          });
+        }
 
         // insertAfterRow satırından sonraya boş satır ekle (0-tabanlı)
         await sheets.spreadsheets.batchUpdate({
