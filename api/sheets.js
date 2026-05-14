@@ -152,18 +152,25 @@ module.exports = async function handler(req, res) {
         return res.json({ success: true, rowNumber: newRowNum });
       }
 
-      // insertAfterRow yoksa eski davranış
-      const appendRes = await sheets.spreadsheets.values.append({
+      // insertAfterRow yoksa: mevcut satır sayısını bul, update ile yaz
+      // (append kullanmıyoruz — hücre limiti 10M'ı patlatıyor)
+      const existingRes = await sheets.spreadsheets.values.get({
         spreadsheetId: SPREADSHEET_ID,
         range: sheetName,
+      });
+      const existingRows = existingRes.data.values || [];
+      const nextRow = existingRows.length + 1; // header + data + 1
+      const colLetter = colToLetter(values.length);
+      const rangeToWrite = `${sheetName}!A${nextRow}:${colLetter}${nextRow}`;
+
+      await sheets.spreadsheets.values.update({
+        spreadsheetId: SPREADSHEET_ID,
+        range: rangeToWrite,
         valueInputOption: sheetName === "FIRMA_REHBERI" ? "RAW" : "USER_ENTERED",
         requestBody: { values: [values] },
       });
-      // Eklenen satır numarasını döndür (örn: "FIRMA_REHBERI!A5:F5" → 5)
-      const updatedRange = appendRes.data?.updates?.updatedRange || "";
-      const rowMatch = updatedRange.match(/:.*?(\d+)$/);
-      const rowNumber = rowMatch ? parseInt(rowMatch[1]) : null;
-      return res.json({ success: true, rowNumber });
+
+      return res.json({ success: true, rowNumber: nextRow });
     }
 
     // DELETE /api/sheets/:sheet/row/:rowNum — satır sil
