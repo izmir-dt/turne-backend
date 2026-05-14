@@ -152,14 +152,37 @@ module.exports = async function handler(req, res) {
         return res.json({ success: true, rowNumber: newRowNum });
       }
 
-      // insertAfterRow yoksa: mevcut satır sayısını bul, update ile yaz
-      // (append kullanmıyoruz — hücre limiti 10M'ı patlatıyor)
+      // insertAfterRow yoksa: sheet meta bilgisini al, gerekirse satır ekle, sonra yaz
+      // update() sheet sınırı dışına yazamaz — önce appendDimension ile satır açıyoruz
+      const metaForAppend = await sheets.spreadsheets.get({ spreadsheetId: SPREADSHEET_ID });
+      const sheetMeta = metaForAppend.data.sheets?.find((s) => s.properties?.title === sheetName);
+      if (!sheetMeta) return res.status(404).json({ error: "Sheet not found" });
+      const sheetIdForAppend = sheetMeta.properties?.sheetId;
+      const currentRowCount = sheetMeta.properties?.gridProperties?.rowCount ?? 0;
+
       const existingRes = await sheets.spreadsheets.values.get({
         spreadsheetId: SPREADSHEET_ID,
         range: sheetName,
       });
       const existingRows = existingRes.data.values || [];
       const nextRow = existingRows.length + 1; // header + data + 1
+
+      // Eğer yeni satır sheet sınırının dışındaysa önce satır ekle
+      if (nextRow > currentRowCount) {
+        await sheets.spreadsheets.batchUpdate({
+          spreadsheetId: SPREADSHEET_ID,
+          requestBody: {
+            requests: [{
+              appendDimension: {
+                sheetId: sheetIdForAppend,
+                dimension: "ROWS",
+                length: Math.max(nextRow - currentRowCount, 10), // en az 10 satır ekle
+              },
+            }],
+          },
+        });
+      }
+
       const colLetter = colToLetter(values.length);
       const rangeToWrite = `${sheetName}!A${nextRow}:${colLetter}${nextRow}`;
 
