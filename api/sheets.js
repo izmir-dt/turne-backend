@@ -99,10 +99,11 @@ module.exports = async function handler(req, res) {
       const { values } = req.body;
       const colCount = values.length;
       const cellRef = `${sheetName}!A${rowNum}:${colToLetter(colCount)}${rowNum}`;
+      const valueInputOption = sheetName === "FIRMA_REHBERI" ? "RAW" : "USER_ENTERED";
       await sheets.spreadsheets.values.update({
         spreadsheetId: SPREADSHEET_ID,
         range: cellRef,
-        valueInputOption: "USER_ENTERED",
+        valueInputOption,
         requestBody: { values: [values] },
       });
       return res.json({ success: true });
@@ -144,7 +145,7 @@ module.exports = async function handler(req, res) {
         await sheets.spreadsheets.values.update({
           spreadsheetId: SPREADSHEET_ID,
           range: `${sheetName}!A${newRowNum}:${colLetter}${newRowNum}`,
-          valueInputOption: "USER_ENTERED",
+          valueInputOption: sheetName === "FIRMA_REHBERI" ? "RAW" : "USER_ENTERED",
           requestBody: { values: [values] },
         });
 
@@ -155,7 +156,7 @@ module.exports = async function handler(req, res) {
       const appendRes = await sheets.spreadsheets.values.append({
         spreadsheetId: SPREADSHEET_ID,
         range: sheetName,
-        valueInputOption: "USER_ENTERED",
+        valueInputOption: sheetName === "FIRMA_REHBERI" ? "RAW" : "USER_ENTERED",
         requestBody: { values: [values] },
       });
       // Eklenen satır numarasını döndür (örn: "FIRMA_REHBERI!A5:F5" → 5)
