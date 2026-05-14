@@ -233,6 +233,85 @@ module.exports = async function handler(req, res) {
       return res.json({ success: true });
     }
 
+    // PUT /api/sheets/:sheet/batch — çoklu satır tek seferde güncelle
+    // body: { updates: [{ row, values }], inserts: [{ values }] }
+    if (sheetName && action === "batch" && req.method === "PUT") {
+      const { updates = [], inserts = [] } = req.body;
+
+      const batchData = [];
+
+      // Güncellenecek satırlar
+      for (const item of updates) {
+        const { row, values } = item;
+        if (!row || !values) continue;
+        const colLetter = colToLetter(values.length);
+        batchData.push({
+          range: `${sheetName}!A${row}:${colLetter}${row}`,
+          values: [values],
+        });
+      }
+
+      if (batchData.length > 0) {
+        await sheets.spreadsheets.values.batchUpdate({
+          spreadsheetId: SPREADSHEET_ID,
+          requestBody: {
+            valueInputOption: sheetName === "FIRMA_REHBERI" ? "RAW" : "USER_ENTERED",
+            data: batchData,
+          },
+        });
+      }
+
+      // Yeni satır eklemeler (sırayla, ama tek tek yerine batched GET sonrası)
+      const insertResults = [];
+      if (inserts.length > 0) {
+        const existingRes = await sheets.spreadsheets.values.get({
+          spreadsheetId: SPREADSHEET_ID,
+          range: sheetName,
+        });
+        const existingRows = existingRes.data.values || [];
+        let nextRow = existingRows.length + 1;
+
+        const metaRes = await sheets.spreadsheets.get({ spreadsheetId: SPREADSHEET_ID });
+        const sheetMeta = metaRes.data.sheets?.find((s) => s.properties?.title === sheetName);
+        const sheetId = sheetMeta?.properties?.sheetId;
+        const currentRowCount = sheetMeta?.properties?.gridProperties?.rowCount ?? 0;
+
+        const totalNeeded = nextRow + inserts.length - 1;
+        if (totalNeeded > currentRowCount) {
+          await sheets.spreadsheets.batchUpdate({
+            spreadsheetId: SPREADSHEET_ID,
+            requestBody: {
+              requests: [{
+                appendDimension: {
+                  sheetId,
+                  dimension: "ROWS",
+                  length: Math.max(totalNeeded - currentRowCount + 10, 20),
+                },
+              }],
+            },
+          });
+        }
+
+        // Tüm insert'leri tek batchUpdate ile yaz
+        const insertBatch = inserts.map((item, idx) => ({
+          range: `${sheetName}!A${nextRow + idx}:${colToLetter(item.values.length)}${nextRow + idx}`,
+          values: [item.values],
+        }));
+
+        await sheets.spreadsheets.values.batchUpdate({
+          spreadsheetId: SPREADSHEET_ID,
+          requestBody: {
+            valueInputOption: sheetName === "FIRMA_REHBERI" ? "RAW" : "USER_ENTERED",
+            data: insertBatch,
+          },
+        });
+
+        inserts.forEach((_, idx) => insertResults.push({ rowNumber: nextRow + idx }));
+      }
+
+      return res.json({ success: true, insertResults });
+    }
+
     return res.status(404).json({ error: "Not found" });
   } catch (err) {
     console.error("Turne API Error:", err);
