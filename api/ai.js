@@ -1,8 +1,8 @@
 // api/ai.js — Vercel Serverless Function
-// Gemini 2.0 Flash kullanır (Google, ücretsiz katman — kart gerekmez)
+// Groq (Llama 3.3 70B) kullanır — tamamen ücretsiz, kart gerekmez
 //
 // Vercel Dashboard > Project > Settings > Environment Variables:
-//   GEMINI_API_KEY = AIza...  (https://aistudio.google.com/app/apikey)
+//   GROQ_API_KEY = gsk_...  (https://console.groq.com → API Keys → Create)
 
 module.exports = async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -12,51 +12,44 @@ module.exports = async function handler(req, res) {
   if (req.method === "OPTIONS") return res.status(200).end();
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
-  const apiKey = process.env.GEMINI_API_KEY;
+  const apiKey = process.env.GROQ_API_KEY;
   if (!apiKey) {
-    return res.status(500).json({ error: "GEMINI_API_KEY not configured" });
+    return res.status(500).json({ error: "GROQ_API_KEY not configured" });
   }
 
   const { messages = [], system = "" } = req.body || {};
 
-  // Anthropic formatındaki mesajları Gemini formatına dönüştür
-  const contents = messages.map((m) => ({
-    role: m.role === "assistant" ? "model" : "user",
-    parts: [{ text: m.content }],
-  }));
-
-  const body = {
-    contents,
-    generationConfig: {
-      maxOutputTokens: 1024,
-      temperature: 0.7,
-    },
-  };
-
-  // Sistem mesajı varsa ekle
+  // Sistem mesajını başa ekle
+  const groqMessages = [];
   if (system) {
-    body.systemInstruction = { parts: [{ text: system }] };
+    groqMessages.push({ role: "system", content: system });
   }
+  groqMessages.push(...messages);
 
   try {
-    const geminiRes = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      }
-    );
+    const groqRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: "llama-3.3-70b-versatile",
+        messages: groqMessages,
+        max_tokens: 1024,
+        temperature: 0.7,
+      }),
+    });
 
-    const data = await geminiRes.json();
+    const data = await groqRes.json();
 
-    if (!geminiRes.ok) {
-      return res.status(geminiRes.status).json({
-        error: data.error?.message || "Gemini API hatası",
+    if (!groqRes.ok) {
+      return res.status(groqRes.status).json({
+        error: data.error?.message || "Groq API hatası",
       });
     }
 
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+    const text = data.choices?.[0]?.message?.content || "";
 
     // HTML tarafının beklediği Anthropic formatında yanıt dön
     return res.status(200).json({
